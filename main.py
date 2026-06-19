@@ -26,55 +26,52 @@ def create_driver() -> webdriver.Chrome:
 
 
 
-def get_away_items_from_dom(driver) -> list[tuple[str, str]]:
-    """Returns list of (data-no, text) for away-team relay elements."""
+def get_relay_items(driver) -> list[tuple[str, str, str]]:
     elements = driver.find_elements(By.CLASS_NAME, "TimeLine_relay_item__R67aM")
     result = []
     for el in elements:
-        if "TimeLine_type_away__Nn8z5" not in (el.get_attribute("class") or ""):
+        cls = el.get_attribute("class") or ""
+        if "TimeLine_type_away__Nn8z5" in cls:
+            team = "원정"
+        elif "TimeLine_type_home__igEcj" in cls:
+            team = "홈"
+        else:
             continue
         data_no = el.get_attribute("data-no") or ""
         text = el.text.strip()
         if data_no:
-            result.append((data_no, text))
+            result.append((data_no, text, team))
     return result
 
-def fetch_items(driver) -> list[tuple[str, str]]:
+def fetch_items(driver) -> list[tuple[str, str, str]]:
     driver.get(PAGE_URL)
     time.sleep(6)  # wait for SPA render + API calls
-    return get_away_items_from_dom(driver)
+    return get_relay_items(driver)
 
-
-def notify(text: str) -> None:
-    preview = text[:100]
-    print(f"[NEW] {preview}")
-    threading.Thread(
-        target=ctypes.windll.user32.MessageBoxTimeoutW,
-        args=(0, preview, "원정팀 이벤트", 0x40, 0, 5000),
-        daemon=True,
-    ).start()
+def fetch_items(driver) -> list[tuple[str, str, str]]:
+    driver.get(PAGE_URL)
+    time.sleep(6)  # wait for SPA render + API calls
+    return get_relay_items(driver)
 
 def main() -> None:
     driver = create_driver()
     try:
         initial = fetch_items(driver)
-        known: set[str] = {no for no, _ in initial}
-        print(f"초기 로드 완료: {len(known)}개 원정팀 항목 (경기 전이면 0개 정상)")
+        known: set[str] = {no for no, *_ in initial}
+        print(f"초기 로드 완료: {len(known)}개 항목 (경기 전이면 0개 정상)")
 
         while True:
             time.sleep(POLL_INTERVAL)
             try:
                 items = fetch_items(driver)
-                new_items = [(no, text) for no, text in items if no not in known]
-                for no, text in new_items:
-                    notify(text)
+                new_items = [(no, text, team) for no, text, team in items if no not in known]
+                for no, text, team in new_items:
+                    notify(text, team)
                     known.add(no)
                 if not new_items:
                     print("변경 없음")
             except Exception as e:
                 print(f"[ERROR] {e}")
-    finally:
-        driver.quit()
 
 
 if __name__ == "__main__":
